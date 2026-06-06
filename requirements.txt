@@ -51,5 +51,5 @@ huggingface_hub>=0.23              # model download + cache management
 # transformers>=4.40               # run models locally (uncomment to enable)
 # torch>=2.2                       # PyTorch for GPU inference (uncomment to enable)
 # llama-cpp-python>=0.2            # GGUF model inference on CPU (uncomment to enable)
-# openai-whisper>=20240930         # local Whisper STT (uncomment for RAM_LOCAL_WHISPER=true)
+# openai-whisper>=20240930         # local Whisper STT (uncomment for MYASSISTANT_LOCAL_WHISPER=true)
 # soundfile>=0.12                  # audio I/O for local Whisper

@@ -1,6 +1,6 @@
-# Contributing to Ram
+# Contributing to MyAssistant
 
-Thank you for your interest in contributing! Ram is MIT-licensed and welcomes
+Thank you for your interest in contributing! MyAssistant is MIT-licensed and welcomes
 contributions of all kinds — new skills, bug fixes, documentation improvements,
 and new channel integrations.
 
@@ -9,14 +9,14 @@ and new channel integrations.
 ## Getting Started
 
 ```bash
-git clone https://github.com/yourusername/ram.git
-cd ram
+git clone https://github.com/yourusername/myassistant.git
+cd MyAssistant
 python -m venv .venv
 source .venv/bin/activate  # or .venv\Scripts\activate on Windows
 pip install -r requirements.txt
 cp .env.example .env
 # Edit .env and add your API keys
-python -m ram skills  # verify setup
+python -m myassistant skills  # verify setup
 ```
 
 ---
@@ -24,12 +24,12 @@ python -m ram skills  # verify setup
 ## How to Add a New Skill
 
 A "skill" is a Python function that the AI agent can call as a tool. Skills
-are the primary way to extend Ram's capabilities.
+are the primary way to extend MyAssistant's capabilities.
 
 ### 1. Create the skill file
 
 ```python
-# ram/skills/my_service.py
+# myassistant/skills/my_service.py
 """Skills for MyService integration.
 
 Provides read and write access to MyService via their REST API.
@@ -37,8 +37,8 @@ Requires MY_SERVICE_API_KEY to be set in .env.
 """
 from __future__ import annotations
 
-from ram.core.registry import skill
-from ram.core.config import settings
+from myassistant.core.registry import skill
+from myassistant.core.config import settings
 
 
 @skill(
@@ -74,7 +74,7 @@ def myservice_search(query: str, limit: int = 10) -> str:
 ### 2. Add the config field
 
 ```python
-# ram/core/config.py — add inside the Settings class
+# myassistant/core/config.py — add inside the Settings class
 my_service_api_key: str = ""   # MyService API key
 ```
 
@@ -87,8 +87,8 @@ MY_SERVICE_API_KEY=       # Get yours at https://myservice.com/api
 
 ### 4. That's it!
 
-Run `python -m ram skills` — your skill should appear in the list.
-Drop a file anywhere under `ram/skills/` and it is auto-discovered.
+Run `python -m myassistant skills` — your skill should appear in the list.
+Drop a file anywhere under `myassistant/skills/` and it is auto-discovered.
 No registration, no import lists to update.
 
 ---
@@ -167,9 +167,9 @@ return str({"items": [...]})
 
 Run before submitting:
 ```bash
-ruff check ram/
-ruff format ram/
-python -m compileall -q ram
+ruff check myassistant/
+ruff format myassistant/
+python -m compileall -q myassistant
 ```
 
 ---
@@ -184,18 +184,18 @@ pytest tests/
 pytest tests/test_skills.py -v
 
 # Run with coverage
-pytest --cov=ram tests/
+pytest --cov=myassistant tests/
 ```
 
 When adding a new skill, please add a test in `tests/test_skills/`:
 
 ```python
 # tests/test_skills/test_my_service.py
-from ram.skills.my_service import myservice_search
+from myassistant.skills.my_service import myservice_search
 
 def test_myservice_search_no_key(monkeypatch):
     """Skill returns error message when API key is missing."""
-    monkeypatch.setattr("ram.core.config.settings.my_service_api_key", "")
+    monkeypatch.setattr("myassistant.core.config.settings.my_service_api_key", "")
     # With requires=[], should still be callable but return an error
     result = myservice_search("test")
     assert "failed" in result.lower() or "error" in result.lower()
@@ -217,8 +217,8 @@ def test_myservice_search_no_key(monkeypatch):
 - [ ] Sensitive skills set `sensitive=True` and support `dry_run`
 - [ ] Optional imports are inside functions, not at module level
 - [ ] Any new env vars are added to `config.py` and `.env.example`
-- [ ] `python -m compileall -q ram` exits 0
-- [ ] `ruff check ram/` is clean
+- [ ] `python -m compileall -q myassistant` exits 0
+- [ ] `ruff check myassistant/` is clean
 
 ---
 
@@ -235,6 +235,6 @@ Please include:
 
 ## Questions?
 
-Open a GitHub Discussion for questions, ideas, or to show off what you've built with Ram.
+Open a GitHub Discussion for questions, ideas, or to show off what you've built with MyAssistant.
 
 Thank you for contributing! 🐏

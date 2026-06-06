@@ -24,10 +24,10 @@ A single Python process hosts:
 
 Two **optional sidecar processes** decouple long-running browser sessions:
 
-- `ram.tools.browser_worker` — owns a persistent Chromium profile (data/browser_profile/)
+- `myassistant.tools.browser_worker` — owns a persistent Chromium profile (data/browser_profile/)
   and drains queued jobs for Google Voice + DoorDash + UberEats.
 - These run as scheduled tasks rather than in the main service, so the agent
-  stays async-safe and a crashing browser doesn't kill Ram.
+  stays async-safe and a crashing browser doesn't kill MyAssistant.
 
 ## Conversation model
 
@@ -63,11 +63,11 @@ Three options, in increasing order of complexity:
 2. **Cloudflare Tunnel** — public HTTPS endpoint with no inbound firewall holes.
 3. **Port-forward 8765** + dynamic-DNS + Let's Encrypt cert (DIY).
 
-In all cases, `RAM_HTTP_TOKEN` provides app-level auth on top of network auth.
+In all cases, `MYASSISTANT_HTTP_TOKEN` provides app-level auth on top of network auth.
 
 ## Threat model
 
-Ram has powerful tools (run shell commands, send messages, place orders). The
+MyAssistant has powerful tools (run shell commands, send messages, place orders). The
 defenses:
 - All sensitive skills require confirmation via the system prompt.
 - HTTP API requires a long bearer token.
@@ -78,12 +78,12 @@ defenses:
 
 ## Failure modes & extension points
 
-- **LLM API down**: the agent returns "(Ram is having trouble reaching the model)";
+- **LLM API down**: the agent returns "(MyAssistant is having trouble reaching the model)";
   channels stay up and queue messages.
 - **A skill module raises**: caught in `_run_tool`, surfaced to the LLM as
   `ERROR running ...`, which the LLM will explain to the user.
-- **Adding a new channel**: subclass `ram.channels.base.Channel`, implement
-  `start()` + optional `send()`, register in `ram/__main__.py`.
-- **Swapping the LLM**: change `RAM_MODEL_MAIN` and adjust the
+- **Adding a new channel**: subclass `myassistant.channels.base.Channel`, implement
+  `start()` + optional `send()`, register in `myassistant/__main__.py`.
+- **Swapping the LLM**: change `MYASSISTANT_MODEL_MAIN` and adjust the
   `Agent._tools()` schema-conversion if the new provider expects a different
   tool format.

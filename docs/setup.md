@@ -3,7 +3,7 @@
 ## 1. Install
 
 ```powershell
-cd "c:\Users\sagupta7\OneDrive - Cisco\Desktop\Ram"
+cd "c:\Users\sagupta7\OneDrive - Cisco\Desktop\MyAssistant"
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt
@@ -23,7 +23,7 @@ You need at minimum `ANTHROPIC_API_KEY`. Add others as you wire up integrations
 ## 3. Try it locally
 
 ```powershell
-python -m ram run --channel cli
+python -m myassistant run --channel cli
 ```
 
 Talk to it in your terminal. Try:
@@ -32,7 +32,7 @@ Talk to it in your terminal. Try:
 - "List my skills."
 
 ```powershell
-python -m ram skills    # see every skill, ✓ = active, · = waiting on creds
+python -m myassistant skills    # see every skill, ✓ = active, · = waiting on creds
 ```
 
 ## 4. Wire up channels
@@ -48,8 +48,8 @@ python -m ram skills    # see every skill, ✓ = active, · = waiting on creds
 2. Send any DM to your new bot, then `https://api.telegram.org/bot<TOKEN>/getUpdates` → grab `chat.id` → `TELEGRAM_OWNER_CHAT_ID`
 
 ### HTTP / Mobile PWA
-1. Set `RAM_HTTP_TOKEN` to a long random string
-2. Make `RAM_HTTP_PORT` reachable from your phone (Tailscale is easiest)
+1. Set `MYASSISTANT_HTTP_TOKEN` to a long random string
+2. Make `MYASSISTANT_HTTP_PORT` reachable from your phone (Tailscale is easiest)
 3. On your phone: visit `https://<your-host>:8765/app`, tap "Add to Home Screen"
 4. First launch: tap ⚙ Settings, enter the URL + token
 
@@ -60,7 +60,7 @@ Twilio inbound webhook to `https://<your-host>:8765/twilio/whatsapp`.
 ## 5. Run with all channels
 
 ```powershell
-python -m ram run --channel all
+python -m myassistant run --channel all
 ```
 
 ## 6. Install as a Windows service (production)
@@ -70,14 +70,14 @@ python -m ram run --channel all
 powershell -ExecutionPolicy Bypass -File scripts\install_service.ps1
 ```
 
-Service runs on boot, restarts on failure. Logs at `data\logs\ram.log` and in
+Service runs on boot, restarts on failure. Logs at `data\logs\myassistant.log` and in
 the Windows Application Event Log.
 
 ## 7. Optional: browser worker for Google Voice + food ordering
 
 In a separate terminal:
 ```powershell
-python -m ram.tools.browser_worker
+python -m myassistant.tools.browser_worker
 ```
 
 A Chromium window opens; log in to voice.google.com, doordash.com,
@@ -86,8 +86,8 @@ ubereats.com once. Sessions persist. Leave the window minimized.
 ## 8. Test the full loop
 
 From your phone (over Tailscale, Discord, Telegram — pick one):
-- "Ram, what's on my calendar today?"
-- "Ram, set the thermostat to 68."
-- "Ram, find a Starbucks near 1 Market Street San Francisco."
-- "Ram, text Dan via group chat that I need to cancel Friday class." → Ram should ask for confirmation, then send.
-- "Ram, open VS Code and tell Claude to fix the build."
+- "MyAssistant, what's on my calendar today?"
+- "MyAssistant, set the thermostat to 68."
+- "MyAssistant, find a Starbucks near 1 Market Street San Francisco."
+- "MyAssistant, text Dan via group chat that I need to cancel Friday class." → MyAssistant should ask for confirmation, then send.
+- "MyAssistant, open VS Code and tell Claude to fix the build."

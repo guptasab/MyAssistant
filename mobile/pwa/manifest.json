@@ -1,6 +1,6 @@
 {
-  "name": "Ram",
-  "short_name": "Ram",
+  "name": "MyAssistant",
+  "short_name": "MyAssistant",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0b1020",

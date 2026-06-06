@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0b1020" />
-  <title>Ram</title>
+  <title>MyAssistant</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icon-192.png" />
   <style>
@@ -18,7 +18,7 @@
     #log { flex: 1; overflow-y: auto; padding: 8px 0; }
     .row { margin: 12px 0; font-size: 20px; line-height: 1.35; }
     .you { color: #79e2ff; }
-    .ram { color: #ffd479; }
+    .myassistant { color: #ffd479; }
     .ptt { width: 100%; height: 28vh; min-height: 180px; margin: 12px 0;
            background: #6759ff; color: white; font-size: 28px; font-weight: 700;
            border: none; border-radius: 28px; box-shadow: 0 8px 28px rgba(103,89,255,.45);
@@ -39,14 +39,14 @@
 </head>
 <body>
   <header>
-    <div>Ram</div>
+    <div>MyAssistant</div>
     <div class="status" id="status">idle</div>
   </header>
 
   <div id="setup" class="setup" style="display:none">
     <div>Server URL (e.g. https://home.tail-xxxx.ts.net:8765):</div>
     <input id="server" placeholder="http://192.168.1.10:8765" />
-    <div style="margin-top:8px">Token (RAM_HTTP_TOKEN):</div>
+    <div style="margin-top:8px">Token (MYASSISTANT_HTTP_TOKEN):</div>
     <input id="token" type="password" />
     <button class="send" onclick="saveSetup()">Save</button>
   </div>
@@ -73,7 +73,7 @@ let mediaRecorder = null;
 let chunks = [];
 
 function cfg() {
-  return { url: localStorage.getItem('ram_url') || '', token: localStorage.getItem('ram_token') || '' };
+  return { url: localStorage.getItem('myassistant_url') || '', token: localStorage.getItem('myassistant_token') || '' };
 }
 function toggleSetup() {
   const s = document.getElementById('setup');
@@ -82,8 +82,8 @@ function toggleSetup() {
   document.getElementById('token').value = cfg().token;
 }
 function saveSetup() {
-  localStorage.setItem('ram_url', document.getElementById('server').value.trim());
-  localStorage.setItem('ram_token', document.getElementById('token').value.trim());
+  localStorage.setItem('myassistant_url', document.getElementById('server').value.trim());
+  localStorage.setItem('myassistant_token', document.getElementById('token').value.trim());
   toggleSetup();
 }
 if (!cfg().url) toggleSetup();
@@ -112,10 +112,10 @@ async function sendText() {
     });
     const j = await r.json();
     lastReply = j.reply;
-    appendRow('ram', j.reply);
+    appendRow('myassistant', j.reply);
     if (j.audio_url) playAudio(url + j.audio_url);
     else speak(j.reply);
-  } catch (e) { appendRow('ram', 'error: ' + e); }
+  } catch (e) { appendRow('myassistant', 'error: ' + e); }
   status.textContent = 'idle';
 }
 
@@ -159,10 +159,10 @@ async function sendVoice(blob, stream) {
     });
     const j = await r.json();
     if (j.transcript) appendRow('you', j.transcript);
-    if (j.reply) { lastReply = j.reply; appendRow('ram', j.reply); }
+    if (j.reply) { lastReply = j.reply; appendRow('myassistant', j.reply); }
     if (j.audio_url) playAudio(url + j.audio_url);
     else if (j.reply) speak(j.reply);
-  } catch (e) { appendRow('ram', 'error: ' + e); }
+  } catch (e) { appendRow('myassistant', 'error: ' + e); }
   status.textContent = 'idle';
 }
 ptt.addEventListener('mousedown', startPTT);

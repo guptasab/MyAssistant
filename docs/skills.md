@@ -1,6 +1,6 @@
 # Skills — what each one needs
 
-Skills are auto-discovered from `ram/skills/`. Each one declares its required
+Skills are auto-discovered from `myassistant/skills/`. Each one declares its required
 env vars; the agent only sees skills whose creds are present, so missing
 integrations don't pollute the tool list.
 
@@ -9,7 +9,7 @@ integrations don't pollute the tool list.
 | `web_search`          | `web_search`, `fetch_url`                              | `TAVILY_API_KEY` (preferred) or `BRAVE_SEARCH_API_KEY` / `SERPER_API_KEY` |
 | `reminders`           | `set_reminder`, `list_reminders`, `cancel_reminder`    | none |
 | `memory_skill`        | `remember_fact`, `recall_fact`, `list_facts`           | none |
-| `calendar_skill`      | `calendar_today`, `calendar_day`, `schedule_event`, `find_free_slot` | `GOOGLE_OAUTH_CLIENT_SECRETS` JSON + one-time `python -m ram.tools.google_auth` |
+| `calendar_skill`      | `calendar_today`, `calendar_day`, `schedule_event`, `find_free_slot` | `GOOGLE_OAUTH_CLIENT_SECRETS` JSON + one-time `python -m myassistant.tools.google_auth` |
 | `smart_home`          | `list_devices`, `set_thermostat`, `turn_on`, `turn_off`, `run_scene` | `HA_BASE_URL`, `HA_TOKEN` (Home Assistant long-lived token; HA integrates Alexa, Hue, Nest, Ecobee, etc.) |
 | `google_voice`        | `send_sms`, `place_call`                               | Twilio creds preferred; falls back to the browser-automation worker for free Google Voice |
 | `maps`                | `find_nearby`, `traffic_eta`, `geocode`                | `GOOGLE_MAPS_API_KEY` |
@@ -28,10 +28,10 @@ calendar lookup, find_nearby, traffic_eta) execute without confirmation.
 
 ## Adding a skill
 
-Create `ram/skills/<your_skill>.py`:
+Create `myassistant/skills/<your_skill>.py`:
 
 ```python
-from ram.core.registry import skill
+from myassistant.core.registry import skill
 
 @skill(
     name="get_stock_price",
@@ -46,8 +46,8 @@ def get_stock_price(ticker: str) -> str:
     return r.json()["Global Quote"]["05. price"]
 ```
 
-Add `ALPHAVANTAGE_API_KEY` to `ram/core/config.py:Settings` so it picks up
-from `.env`. Restart Ram. The agent will autonomously call it whenever
+Add `ALPHAVANTAGE_API_KEY` to `myassistant/core/config.py:Settings` so it picks up
+from `.env`. Restart MyAssistant. The agent will autonomously call it whenever
 relevant.
 
 ## Sensitive-skill confirmation flow (how it works)
@@ -64,5 +64,5 @@ tools, and because the descriptions on those tools explicitly say "confirm
 with the user before calling."
 
 If you want stricter enforcement (block tool execution until a separate
-"yes" message), wrap the call site in `ram/core/agent.py:_run_tool` with a
+"yes" message), wrap the call site in `myassistant/core/agent.py:_run_tool` with a
 check on `skill.sensitive` and an out-of-band confirmation queue.
