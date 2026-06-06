@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Squire Canvas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<!-- Chart.js for bar/line charts -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- marked.js for markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+<!-- highlight.js for code syntax -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/atom-one-dark.min.css"/>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js"></script>
+<style>
+:root {
+  --navy:    #0F172A;
+  --navy2:   #1E293B;
+  --navy3:   #334155;
+  --blue:    #3B82F6;
+  --emerald: #10B981;
+  --amber:   #F59E0B;
+  --red:     #EF4444;
+  --text:    #F8FAFC;
+  --text2:   #94A3B8;
+  --font:    'DM Sans', system-ui, sans-serif;
+  --radius:  12px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--navy);
+  color: var(--text);
+  font-family: var(--font);
+  min-height: 100vh;
+}
+
+/* ── Header ───────────────────────────────────────────────────────────── */
+.header {
+  background: var(--navy2);
+  border-bottom: 1px solid var(--navy3);
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; }
+.logo svg { width: 28px; height: 28px; }
+.canvas-badge {
+  background: rgba(59,130,246,.15);
+  color: var(--blue);
+  border: 1px solid rgba(59,130,246,.3);
+  border-radius: 6px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .4px;
+}
+.header-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.hbtn {
+  background: var(--navy3);
+  border: none;
+  color: var(--text2);
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--font);
+  transition: all .15s;
+}
+.hbtn:hover { background: var(--blue); color: #fff; }
+.hbtn.danger:hover { background: var(--red); }
+.status-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text2);
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--navy3); }
+.dot.live { background: var(--emerald); animation: blink 2s infinite; }
+.dot.err  { background: var(--red); }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+/* ── Canvas grid ──────────────────────────────────────────────────────── */
+#canvas-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 16px;
+  padding: 20px 24px 40px;
+  align-items: start;
+}
+
+/* ── Empty state ──────────────────────────────────────────────────────── */
+#empty-state {
+  grid-column: 1/-1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+  text-align: center;
+  opacity: .6;
+}
+#empty-state .big-icon { font-size: 56px; margin-bottom: 16px; }
+#empty-state h2 { font-size: 20px; margin-bottom: 8px; }
+#empty-state p { color: var(--text2); font-size: 15px; max-width: 380px; line-height: 1.6; }
+
+/* ── Block card ───────────────────────────────────────────────────────── */
+.block {
+  background: var(--navy2);
+  border: 1px solid var(--navy3);
+  border-radius: var(--radius);
+  overflow: hidden;
+  animation: fadeIn .25s ease;
+  position: relative;
+}
+@keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+
+.block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 0;
+  min-height: 28px;
+}
+.block-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: .6px;
+}
+.block-actions { display: flex; gap: 4px; }
+.block-btn {
+  background: none;
+  border: none;
+  color: var(--text2);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  opacity: .6;
+  transition: opacity .15s;
+}
+.block-btn:hover { opacity: 1; background: var(--navy3); }
+.block.pinned { border-color: rgba(59,130,246,.4); }
+.pin-indicator {
+  position: absolute;
+  top: 8px; right: 40px;
+  font-size: 11px;
+  color: var(--blue);
+}
+
+.block-body { padding: 12px 14px 14px; }
+
+/* ── Markdown block ───────────────────────────────────────────────────── */
+.block-markdown .block-body { line-height: 1.7; font-size: 14.5px; }
+.block-markdown h1,.block-markdown h2,.block-markdown h3 {
+  font-size: 1.1em; margin: .6em 0 .3em; color: var(--text);
+}
+.block-markdown p { margin-bottom: .6em; color: var(--text); }
+.block-markdown ul,.block-markdown ol { padding-left: 1.4em; margin-bottom: .6em; }
+.block-markdown li { margin-bottom: .2em; }
+.block-markdown code {
+  background: #0F172A;
+  border: 1px solid var(--navy3);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: .88em;
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+}
+.block-markdown pre { margin: .6em 0; }
+.block-markdown pre code { background: none; border: none; padding: 0; font-size: .88em; }
+.block-markdown blockquote {
+  border-left: 3px solid var(--blue);
+  padding-left: .8em;
+  color: var(--text2);
+  margin: .5em 0;
+}
+.block-markdown strong { color: var(--text); }
+.block-markdown a { color: var(--blue); }
+.block-markdown table { border-collapse: collapse; width: 100%; margin: .6em 0; font-size: .9em; }
+.block-markdown th { background: var(--navy3); padding: 6px 10px; text-align: left; }
+.block-markdown td { padding: 5px 10px; border-bottom: 1px solid var(--navy3); }
+
+/* ── Code block ───────────────────────────────────────────────────────── */
+.block-code .block-body { padding: 0; }
+.block-code pre { margin: 0; border-radius: 0 0 var(--radius) var(--radius); }
+.block-code pre code.hljs { border-radius: 0 0 var(--radius) var(--radius); font-size: 13px; }
+.code-lang-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--navy3);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text2);
+  border-radius: 4px;
+  margin: 8px 14px;
+  text-transform: lowercase;
+}
+
+/* ── Table block ──────────────────────────────────────────────────────── */
+.block-table table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.block-table th {
+  background: rgba(59,130,246,.1);
+  color: var(--blue);
+  font-weight: 600;
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+.block-table td { padding: 7px 10px; border-bottom: 1px solid var(--navy3); font-size: 13.5px; }
+.block-table tr:last-child td { border-bottom: none; }
+.block-table tr:hover td { background: rgba(255,255,255,.02); }
+
+/* ── Metric card ──────────────────────────────────────────────────────── */
+.block-metric .block-body { text-align: center; padding: 20px 14px; }
+.metric-value { font-size: 2.6rem; font-weight: 700; line-height: 1; margin-bottom: 6px; }
+.metric-label { color: var(--text2); font-size: 14px; margin-bottom: 8px; }
+.metric-delta { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+.metric-delta.good { background: rgba(16,185,129,.15); color: var(--emerald); }
+.metric-delta.bad  { background: rgba(239,68,68,.15);  color: var(--red); }
+
+/* ── Checklist block ──────────────────────────────────────────────────── */
+.block-checklist .block-body { padding: 8px 14px 14px; }
+.checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--navy3);
+  font-size: 14px;
+}
+.checklist-item:last-child { border-bottom: none; }
+.check-icon { font-size: 17px; flex-shrink: 0; }
+.checklist-item.done span { text-decoration: line-through; color: var(--text2); }
+
+/* ── Progress bar block ───────────────────────────────────────────────── */
+.block-progress .block-body { padding: 12px 14px 16px; }
+.progress-label { font-size: 14px; margin-bottom: 10px; display: flex; justify-content: space-between; }
+.progress-track {
+  height: 8px;
+  background: var(--navy3);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--blue);
+  border-radius: 8px;
+  transition: width .5s ease;
+}
+
+/* ── Map block ────────────────────────────────────────────────────────── */
+.block-map .block-body { padding: 0; }
+.block-map iframe {
+  width: 100%;
+  height: 240px;
+  border: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  display: block;
+}
+.map-label {
+  padding: 8px 14px;
+  font-size: 13px;
+  color: var(--text2);
+  background: var(--navy3);
+}
+
+/* ── Chart block ──────────────────────────────────────────────────────── */
+.block-chart .block-body { padding: 14px; }
+.block-chart canvas { max-height: 220px; }
+
+/* ── Error block ──────────────────────────────────────────────────────── */
+.block-error { border-color: rgba(239,68,68,.4); }
+.block-error .block-body {
+  background: rgba(239,68,68,.08);
+  color: var(--red);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.error-detail { font-size: 12px; color: var(--text2); margin-top: 8px; font-family: monospace; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">
+    <svg viewBox="0 0 32 32" fill="none">
+      <rect width="32" height="32" rx="8" fill="#3B82F6"/>
+      <path d="M10 10h8a4 4 0 0 1 0 8h-4a4 4 0 0 0 0 8h8"
+            stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <span id="canvas-logo-name">Squire</span>
+  </div>
+  <div class="canvas-badge">LIVE CANVAS</div>
+  <div class="status-pill">
+    <div class="dot" id="ws-dot"></div>
+    <span id="ws-label">connecting…</span>
+  </div>
+  <div class="header-actions">
+    <button class="hbtn" onclick="window.open('/pwa/','_blank')">💬 Chat</button>
+    <button class="hbtn" onclick="window.open('/admin','_blank')">⚙️ Admin</button>
+    <button class="hbtn danger" onclick="clearCanvas()">🗑️ Clear</button>
+  </div>
+</div>
+
+<div id="canvas-grid">
+  <div id="empty-state">
+    <div class="big-icon">🎨</div>
+    <h2>Canvas is ready</h2>
+    <p id="canvas-empty-hint">Ask your assistant something and the results will appear here in real time.<br>
+       Try: <em>"Research the best EVs under $40k and show me a comparison"</em></p>
+  </div>
+</div>
+
+<script>
+// ── Agent identity ────────────────────────────────────────────────────────────
+let agentName = 'Squire';
+
+async function loadAgentName() {
+  try {
+    const r = await fetch('/api/name');
+    if (r.ok) {
+      const d = await r.json();
+      agentName = d.name || 'Squire';
+      const logoEl = document.getElementById('canvas-logo-name');
+      if (logoEl) logoEl.textContent = agentName;
+      document.title = `${agentName} Canvas`;
+      const hint = document.getElementById('canvas-empty-hint');
+      if (hint) hint.innerHTML = `Ask ${agentName} something and the results will appear here in real time.<br>
+         Try: <em>"Research the best EVs under $40k and show me a comparison"</em>`;
+    }
+  } catch(e) {}
+}
+
+// ── WebSocket connection ─────────────────────────────────────────────────────
+const WS_URL = `${location.protocol==='https:'?'wss':'ws'}://${location.host}/canvas/ws`;
+const dot    = document.getElementById('ws-dot');
+const label  = document.getElementById('ws-label');
+let ws       = null;
+let blocks   = {};   // id → DOM element
+let charts   = {};   // id → Chart.js instance
+
+function connect() {
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    dot.className = 'dot live';
+    label.textContent = 'live';
+  };
+  ws.onclose = () => {
+    dot.className = 'dot err';
+    label.textContent = 'reconnecting…';
+    setTimeout(connect, 3000);
+  };
+  ws.onmessage = (evt) => {
+    const msg = JSON.parse(evt.data);
+    handleEvent(msg);
+  };
+}
+
+function handleEvent(msg) {
+  switch (msg.event) {
+    case 'init':
+      // Server sends all current blocks on connect
+      msg.blocks.forEach(addBlock);
+      break;
+    case 'block':
+      addBlock(msg.block);
+      break;
+    case 'remove':
+      removeBlock(msg.id);
+      break;
+    case 'clear':
+      clearLocalCanvas(msg.keep_pinned);
+      break;
+  }
+}
+
+// ── Block rendering ─────────────────────────────────────────────────────────
+function addBlock(block) {
+  // Destroy existing chart if updating
+  if (charts[block.id]) { charts[block.id].destroy(); delete charts[block.id]; }
+
+  // Remove existing DOM node if updating
+  const existing = document.getElementById('block_' + block.id);
+  if (existing) existing.remove();
+
+  const grid = document.getElementById('canvas-grid');
+  const empty = document.getElementById('empty-state');
+  if (empty) empty.remove();
+
+  const card = document.createElement('div');
+  card.id = 'block_' + block.id;
+  card.className = `block block-${block.type}${block.pinned ? ' pinned' : ''}`;
+  card.innerHTML = buildBlock(block);
+  grid.appendChild(card);
+
+  blocks[block.id] = card;
+
+  // Highlight code blocks
+  card.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+
+  // Init charts
+  if (block.type === 'chart') initChart(block);
+
+  // Scroll into view
+  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function buildBlock(b) {
+  const c = b.content || {};
+  const header = `
+    <div class="block-header">
+      <span class="block-title">${escHtml(b.title || typeLabel(b.type))}</span>
+      <div class="block-actions">
+        ${b.pinned ? '<span class="pin-indicator">📌</span>' : ''}
+        <button class="block-btn" onclick="togglePin('${b.id}')" title="Pin/unpin">📌</button>
+        <button class="block-btn" onclick="removeBlock('${b.id}')" title="Remove">✕</button>
+      </div>
+    </div>`;
+
+  switch (b.type) {
+    case 'markdown':
+      return header + `<div class="block-body">${marked.parse(c.text||'')}</div>`;
+
+    case 'code':
+      return header
+        + `<span class="code-lang-badge">${escHtml(c.language||'text')}</span>`
+        + `<div class="block-body"><pre><code class="language-${escHtml(c.language||'text')}">${escHtml(c.code||'')}</code></pre></div>`;
+
+    case 'table':
+      const ths = (c.headers||[]).map(h=>`<th>${escHtml(h)}</th>`).join('');
+      const trs = (c.rows||[]).map(row =>
+        '<tr>' + row.map(cell=>`<td>${escHtml(String(cell))}</td>`).join('') + '</tr>'
+      ).join('');
+      return header + `<div class="block-body"><table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table></div>`;
+
+    case 'metric':
+      const col = c.good === false ? 'var(--red)' : 'var(--emerald)';
+      const deltaClass = c.good === false ? 'bad' : 'good';
+      return header + `<div class="block-body">
+        <div class="metric-value" style="color:${col}">${escHtml(c.value||'—')}</div>
+        <div class="metric-label">${escHtml(c.label||'')}</div>
+        ${c.delta ? `<span class="metric-delta ${deltaClass}">${escHtml(c.delta)}</span>` : ''}
+      </div>`;
+
+    case 'checklist':
+      const items = (c.items||[]).map(it => {
+        const done = it.done;
+        return `<div class="checklist-item${done?' done':''}">
+          <span class="check-icon">${done?'✅':'⬜'}</span>
+          <span>${escHtml(it.text)}</span>
+        </div>`;
+      }).join('');
+      return header + `<div class="block-body">${items}</div>`;
+
+    case 'progress':
+      const pct = Math.round((c.value||0)*100);
+      return header + `<div class="block-body">
+        <div class="progress-label">
+          <span>${escHtml(c.label||'Progress')}</span>
+          <span style="color:var(--blue)">${pct}%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" style="width:${pct}%"></div>
+        </div>
+      </div>`;
+
+    case 'map':
+      // OpenStreetMap embed (no API key needed)
+      const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${c.lon-0.02},${c.lat-0.015},${c.lon+0.02},${c.lat+0.015}&layer=mapnik&marker=${c.lat},${c.lon}`;
+      return header + `<div class="block-body">
+        ${c.label ? `<div class="map-label">📍 ${escHtml(c.label)}</div>` : ''}
+        <iframe src="${mapUrl}" loading="lazy"></iframe>
+      </div>`;
+
+    case 'chart':
+      return header + `<div class="block-body"><canvas id="chart_${b.id}"></canvas></div>`;
+
+    case 'error':
+      return header + `<div class="block-body">
+        ⚠️ ${escHtml(c.text||'An error occurred')}
+        ${c.detail ? `<div class="error-detail">${escHtml(c.detail)}</div>` : ''}
+      </div>`;
+
+    default:
+      return header + `<div class="block-body">${escHtml(JSON.stringify(c, null, 2))}</div>`;
+  }
+}
+
+function initChart(block) {
+  const canvas = document.getElementById('chart_' + block.id);
+  if (!canvas) return;
+  const c = block.content || {};
+  const isLine = c.kind === 'line';
+  charts[block.id] = new Chart(canvas, {
+    type: isLine ? 'line' : 'bar',
+    data: {
+      labels: c.labels || [],
+      datasets: [{
+        label: block.title || '',
+        data: c.data || [],
+        backgroundColor: isLine ? 'rgba(59,130,246,.15)' : 'rgba(59,130,246,.7)',
+        borderColor: '#3B82F6',
+        borderWidth: isLine ? 2 : 0,
+        fill: isLine,
+        tension: isLine ? 0.4 : 0,
+        borderRadius: isLine ? 0 : 6,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,.05)' }, ticks: { color: '#94A3B8' } },
+        y: { grid: { color: 'rgba(255,255,255,.05)' }, ticks: { color: '#94A3B8' } },
+      },
+    },
+  });
+}
+
+function removeBlock(id) {
+  const el = document.getElementById('block_' + id);
+  if (el) {
+    el.style.transition = 'opacity .2s, transform .2s';
+    el.style.opacity = '0';
+    el.style.transform = 'scale(.96)';
+    setTimeout(() => { el.remove(); checkEmpty(); }, 220);
+  }
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+  delete blocks[id];
+  // Notify server
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ action: 'remove', id }));
+  }
+}
+
+function clearCanvas() {
+  if (!confirm('Clear all unpinned blocks?')) return;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ action: 'clear', keep_pinned: true }));
+  }
+  clearLocalCanvas(true);
+}
+
+function clearLocalCanvas(keepPinned) {
+  const grid = document.getElementById('canvas-grid');
+  Object.keys(blocks).forEach(id => {
+    const el = document.getElementById('block_' + id);
+    if (!el) return;
+    if (keepPinned && el.classList.contains('pinned')) return;
+    el.remove();
+    if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+    delete blocks[id];
+  });
+  checkEmpty();
+}
+
+function togglePin(id) {
+  const el = document.getElementById('block_' + id);
+  if (!el) return;
+  el.classList.toggle('pinned');
+}
+
+function checkEmpty() {
+  const grid = document.getElementById('canvas-grid');
+  const hasBlocks = grid.querySelectorAll('.block').length > 0;
+  const empty = document.getElementById('empty-state');
+  if (!hasBlocks && !empty) {
+    const div = document.createElement('div');
+    div.id = 'empty-state';
+    div.innerHTML = `
+      <div class="big-icon">🎨</div>
+      <h2>Canvas is ready</h2>
+      <p>Ask ${agentName} something and results will appear here in real time.</p>`;
+    grid.appendChild(div);
+  }
+}
+
+function typeLabel(type) {
+  const map = { markdown:'Note', code:'Code', table:'Table', metric:'Metric',
+                checklist:'Checklist', progress:'Progress', map:'Map',
+                chart:'Chart', error:'Error', html:'Content' };
+  return map[type] || type;
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+loadAgentName();
+connect();
+</script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+anthropic>=0.40.0
+pydantic>=2.5
+pydantic-settings>=2.1
+python-dotenv>=1.0
+pyyaml>=6.0
+httpx>=0.27
+sqlalchemy>=2.0
+apscheduler>=3.10
+fastapi>=0.110
+uvicorn[standard]>=0.27
+websockets>=12.0
+python-multipart>=0.0.9
+discord.py>=2.3
+python-telegram-bot>=21.0
+twilio>=9.0
+google-api-python-client>=2.120
+google-auth>=2.28
+google-auth-oauthlib>=1.2
+googlemaps>=4.10
+playwright>=1.42
+pyttsx3>=2.90
+sounddevice>=0.4
+numpy>=1.26
+loguru>=0.7
+rich>=13.7
+typer>=0.12
+pywin32>=306; sys_platform == "win32"
+psutil>=5.9
+slack_sdk>=3.27
+openai>=1.30
+google-generativeai>=0.5
+boto3>=1.34
+plaid-python>=18.0
+notion-client>=2.2
+PyGithub>=2.3
+cryptography>=42.0
+qrcode>=7.4
+Pillow>=10.2
+beautifulsoup4>=4.12
+feedparser>=6.0
+icalendar>=5.0
+jinja2>=3.1
+groq>=0.9                          # Groq API (fastest Whisper STT + fast LLM)
+# Windows tray GUI
+pystray>=0.19; sys_platform == "win32"
+keyboard>=0.13; sys_platform == "win32"
+# AWS X-Ray
+aws-xray-sdk>=2.12
+# HuggingFace local models (all optional — install only what you need)
+huggingface_hub>=0.23              # model download + cache management
+# transformers>=4.40               # run models locally (uncomment to enable)
+# torch>=2.2                       # PyTorch for GPU inference (uncomment to enable)
+# llama-cpp-python>=0.2            # GGUF model inference on CPU (uncomment to enable)
+# openai-whisper>=20240930         # local Whisper STT (uncomment for RAM_LOCAL_WHISPER=true)
+# soundfile>=0.12                  # audio I/O for local Whisper
