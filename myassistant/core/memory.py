@@ -85,8 +85,14 @@ class Reminder(Base):
 _engine = create_engine(
     f"sqlite:///{settings.myassistant_data_dir / 'myassistant.db'}",
     future=True,
-    connect_args={"check_same_thread": False},
+    connect_args={"check_same_thread": False, "timeout": 30},
 )
+
+# WAL mode: one writer doesn't block readers; crucial for multi-threaded ingest
+with _engine.connect() as _c:
+    _c.execute(__import__("sqlalchemy").text("PRAGMA journal_mode=WAL"))
+    _c.execute(__import__("sqlalchemy").text("PRAGMA synchronous=NORMAL"))
+
 Base.metadata.create_all(_engine)
 SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False, future=True)
 

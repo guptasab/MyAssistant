@@ -182,7 +182,10 @@
     color: var(--text2);
     padding: 4px 0;
     flex-shrink: 0;
+    cursor: pointer;
+    user-select: none;
   }
+  .wake-status:hover { color: var(--text); }
   .wake-status.listening { color: var(--emerald); }
 
   /* Suggestion chips */
@@ -318,7 +321,7 @@
   <div class="chip" onclick="sendChip(this)">Find food near me</div>
 </div>
 
-<div class="wake-status" id="wake-status">Wake word: say "Hey Squire" to activate</div>
+<div class="wake-status" id="wake-status" onclick="toggleWakeWord()" title="Click to enable hands-free wake word">🎙 Tap to enable hands-free mode</div>
 
 <div class="input-bar">
   <textarea id="text-input" placeholder="Ask Squire anything…" rows="1"></textarea>
@@ -617,43 +620,62 @@ micBtn.onclick = () => {
   else startListening();
 };
 
-// ── Wake Word Detection (via continuous recognition) ─────────────────────
+// ── Wake Word Detection (manual on/off toggle) ───────────────────────────
+let wakeWordEnabled = false;
+let wakeRecog = null;
+
 function startWakeWordListening() {
-  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) return;
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    wakeStatus.textContent = 'Wake word not supported — use mic button';
+    return;
+  }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const wakeRecog = new SR();
+  wakeRecog = new SR();
   wakeRecog.continuous = true;
   wakeRecog.interimResults = true;
   wakeRecog.lang = 'en-US';
 
   wakeRecog.onresult = (evt) => {
+    if (!wakeWordEnabled) return;
     const transcript = Array.from(evt.results)
       .slice(-1)[0][0].transcript.toLowerCase().trim();
     const matched = WAKE_WORDS.some(w => transcript.includes(w));
     if (matched && !isRecording) {
-      // Strip the wake word and send remainder, or start fresh recording
       let cmd = transcript;
-      for (const w of WAKE_WORDS) {
-        cmd = cmd.replace(w, '').trim();
-      }
-      if (cmd.length > 3) {
-        sendText(cmd);
-      } else {
-        startListening();
-      }
+      for (const w of WAKE_WORDS) cmd = cmd.replace(w, '').trim();
+      if (cmd.length > 3) sendText(cmd);
+      else startListening();
     }
   };
 
-  wakeRecog.onend = () => setTimeout(startWakeWordListening, 1000);
-  wakeRecog.onerror = () => setTimeout(startWakeWordListening, 3000);
+  wakeRecog.onend = () => {
+    if (wakeWordEnabled) setTimeout(startWakeWordListening, 1000);
+  };
+  wakeRecog.onerror = () => {
+    if (wakeWordEnabled) setTimeout(startWakeWordListening, 3000);
+  };
 
   try {
     wakeRecog.start();
-    wakeStatus.textContent = `🎙 Wake word active — say "Hey ${AGENT_NAME}"`;
+    wakeStatus.textContent = `🟢 Hands-free on — say "Hey ${AGENT_NAME}" · tap to turn off`;
     wakeStatus.className = 'wake-status listening';
   } catch(e) {
+    wakeWordEnabled = false;
     wakeStatus.textContent = 'Wake word unavailable — use mic button';
+    wakeStatus.className = 'wake-status';
   }
+}
+
+function stopWakeWordListening() {
+  if (wakeRecog) { try { wakeRecog.stop(); } catch(e) {} wakeRecog = null; }
+  wakeStatus.textContent = '🎙 Tap to enable hands-free mode';
+  wakeStatus.className = 'wake-status';
+}
+
+function toggleWakeWord() {
+  wakeWordEnabled = !wakeWordEnabled;
+  if (wakeWordEnabled) startWakeWordListening();
+  else stopWakeWordListening();
 }
 
 // ── Audio playback ────────────────────────────────────────────────────────
@@ -689,12 +711,11 @@ if ('serviceWorker' in navigator) {
 // Load agent name first (sets wake words), then start everything
 loadAgentName().then(() => {
   connectWS();
-  setTimeout(startWakeWordListening, 1000);
-  // Welcome message — only show if not first-run (overlay handles first-run)
+  // Wake word is OFF by default — user taps the status bar to enable
   if (localStorage.getItem('squire_welcomed')) {
     setTimeout(() => {
       showBubble(
-        `Hi! I'm ${AGENT_NAME}. Tap the mic or type — or say "Hey ${AGENT_NAME}" hands-free.`,
+        `Hi! I'm ${AGENT_NAME}. Tap the mic or type — or tap the bar below to enable hands-free mode.`,
         'squire'
       );
     }, 500);

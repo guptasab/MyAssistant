@@ -224,10 +224,11 @@ def _test_provider(name: str) -> dict:
             c.models.list()
             return {"ok": True, "msg": "OpenAI connected ✓"}
         if name == "google":
-            import google.generativeai as genai
-            genai.configure(api_key=settings.google_api_key or settings.gemini_api_key)
-            list(genai.list_models())
-            return {"ok": True, "msg": "Google/Gemini connected ✓"}
+            from google import genai
+            key = settings.google_api_key or settings.gemini_api_key
+            client = genai.Client(api_key=key)
+            r = client.models.generate_content(model="gemini-3.5-flash", contents="hi")
+            return {"ok": True, "msg": f"Google/Gemini connected ✓ (gemini-3.5-flash)"}
         if name == "groq":
             from groq import Groq
             c = Groq(api_key=settings.groq_api_key)
@@ -685,7 +686,7 @@ async function loadSetupSteps() {{
 
   const providerKeys = ['groq_api_key','gemini_api_key','openai_api_key',
     'anthropic_api_key','deepseek_api_key','openrouter_api_key',
-    'fireworks_api_key','cerebras_api_key','venice_api_key','ollama_base_url'];
+    'fireworks_api_key','cerebras_api_key','venice_api_key'];
   const hasProvider  = providerKeys.some(k => cfg[k]);
 
   const googleOk     = cfg._google_connected;
@@ -703,7 +704,7 @@ async function loadSetupSteps() {{
         ? 'Your AI brain is connected and ready.'
         : 'Connect a free AI provider to get started. We recommend Groq (free tier).',
       ok: hasProvider,
-      tab: 'llm_providers',
+      tab: 'ai',
       links: [
         {{label: 'Get free Groq key →', url: 'https://console.groq.com/keys'}},
         {{label: 'Get free Gemini key →', url: 'https://aistudio.google.com/app/apikey'}},
@@ -715,7 +716,7 @@ async function loadSetupSteps() {{
         ? 'Gmail and Google Calendar are connected.'
         : 'Connect Gmail so Squire can triage your inbox, draft replies, and manage your calendar.',
       ok: googleOk,
-      tab: 'google',
+      tab: 'integrations',
     }},
     {{
       title: '3. Messaging Channel',
@@ -723,7 +724,7 @@ async function loadSetupSteps() {{
         ? 'You have a messaging channel — reach Squire from your phone.'
         : 'Connect Telegram, WhatsApp, or Discord to message Squire when away from your computer.',
       ok: channelOk,
-      tab: 'telegram',
+      tab: 'channels',
     }},
     {{
       title: '4. Daily Briefing',
@@ -731,7 +732,7 @@ async function loadSetupSteps() {{
         ? `Daily briefing set for ${{cfg.myassistant_briefing_time}}.`
         : 'Set a time for your morning briefing: calendar, emails, tasks, and weather in one message.',
       ok: briefingOk,
-      tab: 'general',
+      tab: 'profile',
     }},
     {{
       title: '5. Web Interface Password',
@@ -1030,11 +1031,11 @@ async function runDoctor() {{
         line += `\n   💡 Fix: ${{c.fix}}`;
       }}
       return line;
-    }}).join('\n\n');
+    }}).join('\\n\\n');
     const fails = r.results.filter(c=>c.status==='fail').length;
     const warns = r.results.filter(c=>c.status==='warn').length;
     const passes = r.results.filter(c=>c.status==='pass').length;
-    el.textContent = lines + "\n\n" + "─".repeat(50) + "\n✅ " + passes + " passed  ⚠️ " + warns + " warnings  ❌ " + fails + " failures";
+    el.textContent = lines + "\\n\\n" + "─".repeat(50) + "\\n✅ " + passes + " passed  ⚠️ " + warns + " warnings  ❌ " + fails + " failures";
   }} catch(e) {{
     el.textContent = 'Doctor check failed: ' + e;
   }}
@@ -1136,7 +1137,9 @@ def build_admin_router() -> APIRouter:
         _auth(authorization)
         body = await request.json()
         name = body.get("provider", "")
-        result = _test_provider(name)
+        import asyncio
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _test_provider, name)
         return JSONResponse(result)
 
     @r.get("/admin/status")
@@ -1152,7 +1155,7 @@ def build_admin_router() -> APIRouter:
             ("Mistral",      "🌊", bool(settings.mistral_api_key)),
             ("Azure OpenAI", "☁️", bool(settings.azure_openai_api_key)),
             ("AWS",          "🟠", bool(settings.aws_access_key_id)),
-            ("Ollama",       "🦙", True),  # always available
+            ("Ollama",       "🦙", bool(settings.ollama_base_url)),
             ("Twilio SMS",   "📱", bool(settings.twilio_account_sid)),
             ("WhatsApp",     "💬", bool(settings.twilio_whatsapp_from)),
             ("Discord",      "🎮", bool(settings.discord_bot_token)),

@@ -286,23 +286,168 @@ class Agent:
 
         return AgentReply(text="(stopped after 12 tool-call rounds)", actions_taken=actions)
 
+    def _gemini_tools(self, dry_run: bool = False):
+        """Convert skills to Gemini function declarations."""
+        from google.genai import types as gtypes
+        skills = registry.available_skills()
+        if dry_run:
+            skills = [s for s in skills if not s.sensitive]
+        declarations = []
+        for s in skills:
+            at = s.to_anthropic_tool()
+            schema = at.get("input_schema", {})
+            props = {}
+            for k, v in schema.get("properties", {}).items():
+                t = v.get("type", "string")
+                gtype = {
+                    "string": "STRING", "integer": "INTEGER", "number": "NUMBER",
+                    "boolean": "BOOLEAN", "array": "ARRAY", "object": "OBJECT",
+                }.get(t, "STRING")
+                if gtype == "ARRAY":
+                    item_type = v.get("items", {}).get("type", "string")
+                    item_gtype = {
+                        "string": "STRING", "integer": "INTEGER", "number": "NUMBER",
+                        "boolean": "BOOLEAN",
+                    }.get(item_type, "STRING")
+                    props[k] = gtypes.Schema(
+                        type="ARRAY",
+                        description=v.get("description", ""),
+                        items=gtypes.Schema(type=item_gtype),
+                    )
+                else:
+                    props[k] = gtypes.Schema(type=gtype, description=v.get("description", ""))
+            declarations.append(gtypes.FunctionDeclaration(
+                name=at["name"],
+                description=at.get("description", ""),
+                parameters=gtypes.Schema(
+                    type="OBJECT",
+                    properties=props,
+                    required=schema.get("required", []),
+                ) if props else None,
+            ))
+        return [gtypes.Tool(function_declarations=declarations)] if declarations else []
+
     async def _agent_loop_router(self, history: list[dict], actions: list[str],
-                                  user_id: str) -> AgentReply:
-        from myassistant.core.llm import llm_chat
-        msgs: list[dict] = []
-        for m in history:
-            c = m["content"]
-            if isinstance(c, str):
-                msgs.append({"role": m["role"], "content": c})
-            elif isinstance(c, list):
-                txt = " ".join(b.get("text", "") for b in c if isinstance(b, dict) and b.get("type") == "text")
+                                  user_id: str, dry_run: bool = False) -> AgentReply:
+        """Gemini-native tool-use loop — used when no Anthropic key is configured."""
+        from myassistant.core.config import settings as cfg
+        key = getattr(cfg, "google_api_key", "") or getattr(cfg, "gemini_api_key", "")
+        if not key:
+            # Pure text fallback if no Gemini key either
+            from myassistant.core.llm import llm_chat
+            msgs = []
+            for m in history:
+                c = m["content"]
+                txt = c if isinstance(c, str) else " ".join(
+                    b.get("text", "") for b in c if isinstance(b, dict) and b.get("type") == "text"
+                )
                 if txt:
                     msgs.append({"role": m["role"], "content": txt})
+            sys_text = self._system_blocks()[0]["text"]
+            out = await asyncio.to_thread(llm_chat, msgs, task="reasoning", system=sys_text, max_tokens=1024)
+            return AgentReply(text=out, actions_taken=actions)
+
+        from google import genai
+        from google.genai import types as gtypes
+
+        client = genai.Client(api_key=key)
         sys_text = self._system_blocks()[0]["text"]
-        out = await asyncio.to_thread(
-            llm_chat, msgs, task="reasoning", system=sys_text, max_tokens=1024,
+        tools = self._gemini_tools(dry_run)
+
+        # Build contents list from history
+        def _to_contents(hist):
+            contents = []
+            for m in hist:
+                role = "user" if m["role"] == "user" else "model"
+                c = m["content"]
+                if isinstance(c, str):
+                    if c.strip():
+                        contents.append(gtypes.Content(role=role, parts=[gtypes.Part(text=c)]))
+                elif isinstance(c, list):
+                    parts = []
+                    for b in c:
+                        if not isinstance(b, dict):
+                            continue
+                        if b.get("type") == "text" and b.get("text", "").strip():
+                            parts.append(gtypes.Part(text=b["text"]))
+                        elif b.get("type") == "tool_use":
+                            parts.append(gtypes.Part(function_call=gtypes.FunctionCall(
+                                name=b["name"], args=b.get("input", {})
+                            )))
+                        elif b.get("type") == "tool_result":
+                            parts.append(gtypes.Part(function_response=gtypes.FunctionResponse(
+                                name=b.get("tool_use_id", "tool"),
+                                response={"result": str(b.get("content", ""))},
+                            )))
+                    if parts:
+                        contents.append(gtypes.Content(role=role, parts=parts))
+            return contents
+
+        gcfg = gtypes.GenerateContentConfig(
+            system_instruction=sys_text,
+            tools=tools,
+            max_output_tokens=3000,
         )
-        return AgentReply(text=out, actions_taken=actions)
+
+        contents = _to_contents(history)
+
+        for _ in range(12):
+            resp = await asyncio.to_thread(
+                client.models.generate_content,
+                model="gemini-3.5-flash",
+                contents=contents,
+                config=gcfg,
+            )
+
+            # Check for function calls
+            fn_calls = [p.function_call for p in resp.candidates[0].content.parts
+                        if hasattr(p, "function_call") and p.function_call]
+
+            if not fn_calls:
+                text = "".join(
+                    p.text for p in resp.candidates[0].content.parts
+                    if hasattr(p, "text") and p.text
+                ).strip()
+                return AgentReply(text=text or "(no response)", actions_taken=actions)
+
+            # Append model turn
+            contents.append(resp.candidates[0].content)
+
+            # Execute each function call
+            fn_results = []
+            last_tool_output = ""
+            for fc in fn_calls:
+                args = dict(fc.args) if fc.args else {}
+                out, intercepted = await self._run_tool(fc.name, args, user_id, dry_run)
+                if intercepted:
+                    return AgentReply(text=out, actions_taken=actions, pending_confirmation=True)
+                actions.append(f"{fc.name}({json.dumps(args)[:120]})")
+                last_tool_output = str(out)
+                fn_results.append(gtypes.Part(function_response=gtypes.FunctionResponse(
+                    name=fc.name,
+                    response={"result": last_tool_output},
+                )))
+
+            contents.append(gtypes.Content(role="user", parts=fn_results))
+
+            # One final synthesis pass — ask model to respond in plain text
+            synth_resp = await asyncio.to_thread(
+                client.models.generate_content,
+                model="gemini-3.5-flash",
+                contents=contents,
+                config=gtypes.GenerateContentConfig(
+                    system_instruction=sys_text,
+                    max_output_tokens=1000,
+                ),
+            )
+            text = "".join(
+                p.text for p in synth_resp.candidates[0].content.parts
+                if hasattr(p, "text") and p.text
+            ).strip()
+            # If model still returns empty, surface the raw tool output
+            return AgentReply(text=text or last_tool_output, actions_taken=actions)
+
+        return AgentReply(text="(stopped after 12 tool-call rounds)", actions_taken=actions)
 
     async def handle(self, user_id: str, user_text: str) -> AgentReply:
         # ── undo shortcut ──────────────────────────────────────────────────
@@ -354,7 +499,7 @@ class Agent:
                 "(MyAssistant has no LLM provider configured — set ANTHROPIC_API_KEY "
                 "or any of OPENAI/GEMINI/AZURE/etc.)"
             ))
-        result = await self._agent_loop_router(history, actions, user_id)
+        result = await self._agent_loop_router(history, actions, user_id, dry_run)
 
         if settings.memory_auto_learn and not memory.is_incognito(user_id):
             asyncio.create_task(_bg_extract_facts(user_id))

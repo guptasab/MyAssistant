@@ -7,12 +7,15 @@ from __future__ import annotations
 
 import json
 import math
+import threading
 import time
 from typing import Any
 
 from sqlalchemy import Column, Integer, String, Text, Float
 
 from myassistant.core.memory import Base, db, _engine
+
+_write_lock = threading.Lock()
 
 
 class VectorEntry(Base):
@@ -41,15 +44,16 @@ def add(kind: str, text: str, ref_id: str = "", metadata: dict | None = None) ->
     vec = _embed(text)
     if not vec:
         return None
-    with db() as s:
-        e = VectorEntry(
-            kind=kind, ref_id=ref_id, text=text[:8000],
-            embedding=json.dumps(vec),
-            metadata_json=json.dumps(metadata or {}),
-        )
-        s.add(e)
-        s.flush()
-        return e.id
+    with _write_lock:
+        with db() as s:
+            e = VectorEntry(
+                kind=kind, ref_id=ref_id, text=text[:8000],
+                embedding=json.dumps(vec),
+                metadata_json=json.dumps(metadata or {}),
+            )
+            s.add(e)
+            s.flush()
+            return e.id
 
 
 def _cosine(a: list[float], b: list[float]) -> float:

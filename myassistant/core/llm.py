@@ -71,10 +71,11 @@ _CATALOG: list[ProviderModel] = [
     ProviderModel("groq", "whisper-large-v3",      ("transcribe",),                     1, 2, 9, 0),
 
     # ── Google Gemini (generous free tier) ────────────────────────────────
-    ProviderModel("gemini", "gemini-2.5-pro",      ("reasoning", "draft", "vision", "search"), 7, 5, 9, 1_000_000),
-    ProviderModel("gemini", "gemini-2.5-flash",    ("fast", "cheap", "vision", "search"),      1, 2, 8, 1_000_000),
-    ProviderModel("gemini", "gemini-2.0-flash",    ("fast", "cheap"),                           1, 1, 7, 1_000_000),
-    ProviderModel("gemini", "text-embedding-004",  ("embed",),                                  1, 2, 8, 2_048),
+    ProviderModel("gemini", "gemini-3.1-pro-preview", ("reasoning", "draft", "vision", "search", "code"), 7, 5, 10, 1_000_000),
+    ProviderModel("gemini", "gemini-3.5-flash",       ("fast", "cheap", "vision", "search", "code"),      1, 2, 10, 1_000_000),
+    ProviderModel("gemini", "gemini-2.5-pro",         ("reasoning", "draft", "vision", "search"),         7, 5,  8, 1_000_000),
+    ProviderModel("gemini", "gemini-2.5-flash",       ("fast", "cheap", "vision", "search", "code"),      1, 2,  7, 1_000_000),
+    ProviderModel("gemini", "gemini-embedding-001", ("embed",),                                  1, 2, 9, 8_192),
 
     # ── DeepSeek (open-weight, cheap API) ────────────────────────────────
     ProviderModel("deepseek", "deepseek-chat",     ("reasoning", "draft", "code"),      2, 4, 9, 128_000),
@@ -220,19 +221,22 @@ def _call_openai(model: str, messages: list[dict], system: str = "",
 
 def _call_gemini(model: str, messages: list[dict], system: str = "",
                  max_tokens: int = 1024, temperature: float = 0.5) -> str:
-    import google.generativeai as genai
-    genai.configure(api_key=getattr(settings, "google_api_key", "") or getattr(settings, "gemini_api_key", ""))
-    g = genai.GenerativeModel(model, system_instruction=system or None)
-    # Gemini takes a single prompt or chat-style
-    parts = []
+    from google import genai
+    from google.genai import types
+    key = getattr(settings, "google_api_key", "") or getattr(settings, "gemini_api_key", "")
+    client = genai.Client(api_key=key)
+    contents = []
     for m in messages:
         role = "user" if m["role"] == "user" else "model"
-        content = m["content"] if isinstance(m["content"], str) else json.dumps(m["content"])
-        parts.append({"role": role, "parts": [content]})
-    r = g.generate_content(parts, generation_config={
-        "max_output_tokens": max_tokens, "temperature": temperature,
-    })
-    return (getattr(r, "text", "") or "").strip()
+        text = m["content"] if isinstance(m["content"], str) else json.dumps(m["content"])
+        contents.append(types.Content(role=role, parts=[types.Part(text=text)]))
+    cfg = types.GenerateContentConfig(
+        max_output_tokens=max_tokens,
+        temperature=temperature,
+        system_instruction=system or None,
+    )
+    r = client.models.generate_content(model=model, contents=contents, config=cfg)
+    return (r.text or "").strip()
 
 
 def _call_azure(model: str, messages: list[dict], system: str = "",
@@ -537,9 +541,27 @@ def llm_embed(texts: list[str]) -> list[list[float]]:
             r = c.embeddings.create(model=em.model, input=texts)
             return [d.embedding for d in r.data]
         if em.provider == "gemini":
-            import google.generativeai as genai
-            genai.configure(api_key=getattr(settings, "google_api_key", "") or getattr(settings, "gemini_api_key", ""))
-            return [genai.embed_content(model=em.model, content=t)["embedding"] for t in texts]
+            import threading, time as _time
+            from google import genai
+            key = getattr(settings, "google_api_key", "") or getattr(settings, "gemini_api_key", "")
+            client = genai.Client(api_key=key)
+            # Serialise all embedding calls — Gemini free/low-tier rate limits are tight
+            if not hasattr(llm_embed, "_gemini_lock"):
+                llm_embed._gemini_lock = threading.Lock()
+            out = []
+            for t in texts:
+                for attempt in range(4):
+                    with llm_embed._gemini_lock:
+                        try:
+                            r = client.models.embed_content(model=em.model, contents=t)
+                            out.append(r.embeddings[0].values)
+                            break
+                        except Exception as exc:
+                            if attempt < 3 and ("503" in str(exc) or "429" in str(exc) or "UNAVAILABLE" in str(exc)):
+                                _time.sleep(2 ** attempt)
+                            else:
+                                raise
+            return out
         if em.provider == "bedrock":
             import boto3
             client = boto3.client("bedrock-runtime", region_name=settings.aws_region,
@@ -593,11 +615,14 @@ def llm_vision(image_b64: str, prompt: str, mime: str = "image/jpeg") -> str:
             }])
             return (r.choices[0].message.content or "").strip()
         if m.provider == "gemini":
-            import base64, google.generativeai as genai
-            genai.configure(api_key=getattr(settings, "google_api_key", "") or getattr(settings, "gemini_api_key", ""))
-            g = genai.GenerativeModel(m.model)
-            r = g.generate_content([{"mime_type": mime, "data": base64.b64decode(image_b64)}, prompt])
-            return (getattr(r, "text", "") or "").strip()
+            import base64
+            from google import genai
+            from google.genai import types
+            key = getattr(settings, "google_api_key", "") or getattr(settings, "gemini_api_key", "")
+            client = genai.Client(api_key=key)
+            img_part = types.Part.from_bytes(data=base64.b64decode(image_b64), mime_type=mime)
+            r = client.models.generate_content(model=m.model, contents=[img_part, prompt])
+            return (r.text or "").strip()
     except Exception as e:
         logger.exception(f"vision failed: {e}")
     return f"(vision call failed)"
