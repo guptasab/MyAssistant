@@ -116,17 +116,17 @@ class VoiceSession:
                 await self._send({"type": "thinking", "text": "(could not transcribe audio)"})
                 return
             await self._send({"type": "transcript", "text": transcript})
-            await self._run_agent(transcript)
+            await self._run_agent(transcript, speak=True)
             return
 
         # ── plain text input (typed or from tray) ─────────────────────────
         if mtype == "text":
             text = (msg.get("text") or "").strip()
             if text:
-                await self._run_agent(text)
+                await self._run_agent(text, speak=False)
 
-    async def _run_agent(self, text: str) -> None:
-        """Send user text to the agent and stream the reply back as text + audio."""
+    async def _run_agent(self, text: str, speak: bool = False) -> None:
+        """Send user text to the agent and stream the reply back as text (and audio if speak=True)."""
         self._interrupted = False
         await self._send({"type": "thinking", "text": "Thinking…"})
 
@@ -141,13 +141,13 @@ class VoiceSession:
         # If a confirmation gate was triggered, highlight it
         if reply.pending_confirmation:
             await self._send({"type": "confirm", "text": full_text})
-            await self._tts_chunk(full_text)
+            if speak:
+                await self._tts_chunk(full_text)
             return
 
         await self._send({"type": "done", "text": full_text})
 
-        # Stream TTS sentence by sentence so the user hears MyAssistant start speaking fast
-        if not self._interrupted:
+        if speak and not self._interrupted:
             await self._stream_tts(full_text)
 
     async def _stream_tts(self, text: str) -> None:
@@ -221,13 +221,6 @@ def build_voice_router(agent_handle: Callable) -> APIRouter:
         await ws.accept()
         user_id = f"voice:{ws.query_params.get('user', 'default')}"
         session = VoiceSession(ws, agent_handle, user_id)
-
-        # Greet with a short spoken welcome
-        await session._send({"type": "thinking", "text": "Connected to MyAssistant"})
-        asyncio.create_task(
-            session._tts_chunk("Hi, I'm MyAssistant. What can I do for you?")
-        )
-
         await session.run()
 
     @router.post("/voice/transcribe")

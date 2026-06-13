@@ -381,8 +381,8 @@ function applyAgentName(name) {
   // Textarea placeholder
   if (textInput) textInput.placeholder = `Ask ${name} anything…`;
 
-  // Wake status
-  if (wakeStatus) wakeStatus.textContent = `Wake word: say "Hey ${name}" to activate`;
+  // Wake status — only update if hands-free is not already active
+  if (wakeStatus && !wakeWordEnabled) wakeStatus.textContent = `🎙 Tap to enable hands-free mode`;
 
   // Page title
   document.title = `${name} — mysquire.ai`;
@@ -470,7 +470,12 @@ function handleServerMessage(msg) {
       appendToLastBubble(msg.text);
       break;
     case 'done':
-      finishBubble();
+      // If streaming chunks were sent, finishBubble; otherwise render the full text now
+      if (currentBubble) {
+        finishBubble();
+      } else if (msg.text) {
+        showBubble(msg.text, 'squire');
+      }
       if (continuousMode) startListening();
       break;
     case 'confirm':

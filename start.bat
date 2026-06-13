@@ -6,6 +6,7 @@ for /f "tokens=5" %%p in ('netstat -ano 2^>nul ^| findstr ":8765 " ^| findstr "L
     echo [Squire] Killing PID %%p on port 8765
     taskkill /PID %%p /F /T >nul 2>&1
 )
+timeout /t 2 /nobreak >nul
 
 echo [Squire] Releasing SQLite WAL locks...
 if exist "data\myassistant.db-wal" del /F "data\myassistant.db-wal" >nul 2>&1

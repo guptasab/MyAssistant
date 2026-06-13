@@ -287,11 +287,33 @@ class Agent:
         return AgentReply(text="(stopped after 12 tool-call rounds)", actions_taken=actions)
 
     def _gemini_tools(self, dry_run: bool = False):
-        """Convert skills to Gemini function declarations."""
+        """Convert skills to Gemini function declarations.
+        Only include skills that have actual integrations configured, plus always-on
+        built-in skills (kb, memory, canvas, tasks, etc.) that need no credentials.
+        """
         from google.genai import types as gtypes
-        skills = registry.available_skills()
+        from myassistant.core.config import settings as cfg
+        all_skills = registry.available_skills()
         if dry_run:
-            skills = [s for s in skills if not s.sensitive]
+            all_skills = [s for s in all_skills if not s.sensitive]
+
+        # Skills that require credentials: only include if those creds are set
+        # Skills with no requires: only include core built-ins to keep the list small
+        ALWAYS_INCLUDE_PREFIXES = (
+            "kb_", "remember", "recall", "forget", "memory", "canvas_",
+            "list_tasks", "add_task", "complete_task", "update_task",
+            "onboarding", "what_can_you_do", "notify_owner",
+            "web_search", "weather", "news_",
+        )
+        skills = []
+        for s in all_skills:
+            if s.requires:
+                # Has dependencies — registry already verified creds exist
+                skills.append(s)
+            elif any(s.name.startswith(p) for p in ALWAYS_INCLUDE_PREFIXES):
+                skills.append(s)
+        # Hard cap to avoid Gemini timeouts
+        skills = skills[:128]
         declarations = []
         for s in skills:
             at = s.to_anthropic_tool()
@@ -350,19 +372,24 @@ class Agent:
         from google import genai
         from google.genai import types as gtypes
 
-        client = genai.Client(api_key=key)
+        client = genai.Client(api_key=key).aio  # use async client — no thread blocking
         sys_text = self._system_blocks()[0]["text"]
         tools = self._gemini_tools(dry_run)
 
-        # Build contents list from history
+        # Build contents list from history, enforcing alternating user/model turns
         def _to_contents(hist):
             contents = []
+            last_role = None
             for m in hist:
                 role = "user" if m["role"] == "user" else "model"
+                # Skip consecutive same-role turns — Gemini requires strict alternation
+                if role == last_role:
+                    continue
                 c = m["content"]
                 if isinstance(c, str):
                     if c.strip():
                         contents.append(gtypes.Content(role=role, parts=[gtypes.Part(text=c)]))
+                        last_role = role
                 elif isinstance(c, list):
                     parts = []
                     for b in c:
@@ -381,6 +408,7 @@ class Agent:
                             )))
                     if parts:
                         contents.append(gtypes.Content(role=role, parts=parts))
+                        last_role = role
             return contents
 
         gcfg = gtypes.GenerateContentConfig(
@@ -391,13 +419,20 @@ class Agent:
 
         contents = _to_contents(history)
 
+        last_tool_output = ""
         for _ in range(12):
-            resp = await asyncio.to_thread(
-                client.models.generate_content,
-                model="gemini-3.5-flash",
-                contents=contents,
-                config=gcfg,
-            )
+            try:
+                resp = await asyncio.wait_for(
+                    client.models.generate_content(
+                        model="gemini-3.5-flash",
+                        contents=contents,
+                        config=gcfg,
+                    ),
+                    timeout=30,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Gemini call timed out after 30s")
+                return AgentReply(text=last_tool_output or "(request timed out — please try again)", actions_taken=actions)
 
             # Check for function calls
             fn_calls = [p.function_call for p in resp.candidates[0].content.parts
@@ -408,14 +443,13 @@ class Agent:
                     p.text for p in resp.candidates[0].content.parts
                     if hasattr(p, "text") and p.text
                 ).strip()
-                return AgentReply(text=text or "(no response)", actions_taken=actions)
+                return AgentReply(text=text or last_tool_output or "(no response)", actions_taken=actions)
 
             # Append model turn
             contents.append(resp.candidates[0].content)
 
-            # Execute each function call
+            # Execute each function call and append results; loop back for text response
             fn_results = []
-            last_tool_output = ""
             for fc in fn_calls:
                 args = dict(fc.args) if fc.args else {}
                 out, intercepted = await self._run_tool(fc.name, args, user_id, dry_run)
@@ -430,24 +464,7 @@ class Agent:
 
             contents.append(gtypes.Content(role="user", parts=fn_results))
 
-            # One final synthesis pass — ask model to respond in plain text
-            synth_resp = await asyncio.to_thread(
-                client.models.generate_content,
-                model="gemini-3.5-flash",
-                contents=contents,
-                config=gtypes.GenerateContentConfig(
-                    system_instruction=sys_text,
-                    max_output_tokens=1000,
-                ),
-            )
-            text = "".join(
-                p.text for p in synth_resp.candidates[0].content.parts
-                if hasattr(p, "text") and p.text
-            ).strip()
-            # If model still returns empty, surface the raw tool output
-            return AgentReply(text=text or last_tool_output, actions_taken=actions)
-
-        return AgentReply(text="(stopped after 12 tool-call rounds)", actions_taken=actions)
+        return AgentReply(text=last_tool_output or "(stopped after 12 rounds)", actions_taken=actions)
 
     async def handle(self, user_id: str, user_text: str) -> AgentReply:
         # ── undo shortcut ──────────────────────────────────────────────────
@@ -458,6 +475,16 @@ class Agent:
         reply = await self._check_pending_confirmation(user_id, user_text)
         if reply is not None:
             return reply
+
+        # ── direct skill shortcut: "skill_name" or "skill_name arg=val" ──────
+        _direct = _parse_direct_skill(user_text)
+        if _direct:
+            sk_name, sk_args = _direct
+            out, intercepted = await self._run_tool(sk_name, sk_args, user_id)
+            if not intercepted:
+                memory.append_message(user_id, "user", user_text)
+                memory.append_message(user_id, "assistant", out)
+                return AgentReply(text=out, actions_taken=[f"{sk_name}({json.dumps(sk_args)[:80]})"])
 
         # ── dry-run detection ──────────────────────────────────────────────
         dry_run = bool(_DRY_RUN_RE.match(user_text))
@@ -547,6 +574,31 @@ def _describe_action(skill_name: str, args: dict) -> str:
             pass
     arg_summary = ", ".join(f"{k}={str(v)[:40]}" for k, v in list(args.items())[:3])
     return f"{skill_name}({arg_summary})"
+
+
+def _parse_direct_skill(text: str) -> tuple[str, dict] | None:
+    """If text is exactly a skill name (optionally with key=val args), return (name, args).
+    Examples: "kb_status", "kb_search query=divorce", "kb_ingest folder_path=C:/docs"
+    Returns None if not a direct skill invocation.
+    """
+    text = text.strip()
+    # Must start with a known skill name (word chars + underscores)
+    m = re.match(r'^([a-z][a-z0-9_]+)(.*)?$', text, re.I)
+    if not m:
+        return None
+    candidate = m.group(1)
+    sk = registry.get(candidate)
+    if not sk:
+        return None
+    # Parse optional key=value pairs
+    args = {}
+    rest = (m.group(2) or "").strip()
+    if rest:
+        for pair in re.finditer(r'(\w+)=("([^"]*?)"|\'([^\']*?)\'|(\S+))', rest):
+            k = pair.group(1)
+            v = pair.group(3) or pair.group(4) or pair.group(5) or ""
+            args[k] = v
+    return candidate, args
 
 
 _agent: Agent | None = None

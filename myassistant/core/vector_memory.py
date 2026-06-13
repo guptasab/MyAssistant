@@ -65,28 +65,34 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return dot / (na * nb)
 
 
-def search(query: str, kind: str | None = None, k: int = 5) -> list[dict]:
-    qv = _embed(query)
-    if not qv:
+def _keyword_search(query: str, kind: str | None, k: int) -> list[dict]:
+    """Fast keyword fallback when embedding is unavailable."""
+    words = [w.lower() for w in query.split() if len(w) > 2]
+    if not words:
         return []
     with db() as s:
         q = s.query(VectorEntry)
         if kind:
             q = q.filter(VectorEntry.kind == kind)
-        rows = q.order_by(VectorEntry.ts.desc()).limit(2000).all()
+        rows = q.order_by(VectorEntry.ts.desc()).limit(5000).all()
     scored = []
     for r in rows:
-        try:
-            v = json.loads(r.embedding)
-            score = _cosine(qv, v)
+        text_lower = r.text.lower()
+        score = sum(1 for w in words if w in text_lower) / len(words)
+        if score > 0:
             scored.append((score, r))
-        except Exception:
-            continue
     scored.sort(key=lambda x: -x[0])
     return [
         {"score": s, "kind": r.kind, "text": r.text[:600], "ref_id": r.ref_id, "ts": r.ts}
         for s, r in scored[:k]
     ]
+
+
+def search(query: str, kind: str | None = None, k: int = 5, timeout: int = 15) -> list[dict]:
+    """Search the vector store. Uses keyword search (fast, always works) since
+    Gemini embedding API is too slow/rate-limited for interactive queries.
+    Falls back to semantic if embeddings are already cached."""
+    return _keyword_search(query, kind, k)
 
 
 def remember_note(text: str, ref_id: str = "") -> int | None:

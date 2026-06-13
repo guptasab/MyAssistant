@@ -543,9 +543,9 @@ def llm_embed(texts: list[str]) -> list[list[float]]:
         if em.provider == "gemini":
             import threading, time as _time
             from google import genai
+            import httpx as _httpx
             key = getattr(settings, "google_api_key", "") or getattr(settings, "gemini_api_key", "")
             client = genai.Client(api_key=key)
-            # Serialise all embedding calls — Gemini free/low-tier rate limits are tight
             if not hasattr(llm_embed, "_gemini_lock"):
                 llm_embed._gemini_lock = threading.Lock()
             out = []
@@ -557,7 +557,8 @@ def llm_embed(texts: list[str]) -> list[list[float]]:
                             out.append(r.embeddings[0].values)
                             break
                         except Exception as exc:
-                            if attempt < 3 and ("503" in str(exc) or "429" in str(exc) or "UNAVAILABLE" in str(exc)):
+                            s = str(exc)
+                            if attempt < 3 and ("503" in s or "429" in s or "UNAVAILABLE" in s or "timeout" in s.lower()):
                                 _time.sleep(2 ** attempt)
                             else:
                                 raise
